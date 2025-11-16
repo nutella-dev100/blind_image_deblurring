@@ -10,13 +10,16 @@ def threshold_dark_channel(D, w_k, xi):
     p = np.where(D >= threshold, D, 0)
     return p
 
-def threshold_gradient(grad, theta, lam):
-    #returns g
-    gh, gv = grad
-    mag_sq = gradient.gradient_mag_sq(grad)
-    threshold = theta / lam
+def threshold_gradient(g, theta, lam):
+    gh, gv = g
 
-    mask = (mag_sq >= threshold)
-    g_h = gh * mask     #keep the value wherever condition is true
-    g_v = gv * mask
-    return g_h, g_v
+    mag = np.sqrt(gh*gh + gv*gv)
+    T = theta / (lam + 1e-8)
+
+    mask = mag > T
+
+    # KEEP original magnitude, only zero-out weak gradients
+    gh_t = gh * mask
+    gv_t = gv * mask
+
+    return gh_t, gv_t

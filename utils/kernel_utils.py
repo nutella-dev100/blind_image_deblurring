@@ -1,5 +1,5 @@
 import numpy as np
-from numpy.fft import fftshift
+from numpy.fft import fftshift, ifftshift
 import cv2
 
 #kernel utils
@@ -7,10 +7,6 @@ def normalise_kernel(k):
     s = k.sum()
     if s > 1e-8:
         return k / s
-    return k
-
-def threshold_small_values(k, thresh=1e-3):
-    k = np.where(k < thresh, 0, k)
     return k
 
 def clamp_kernel(k):
@@ -47,9 +43,132 @@ def resize_kernel(k, target_shape):
 
 #one function as a wrapper
 def clean_kernel(k):
-    k = clamp_kernel(k)
-    k = threshold_small_values(k)
-    k = center_kernel(k)
+    # clamp negative values
+    k = np.clip(k, 0, None)
+
+    # === relative threshold (FIX) ===
+    thr = max(1e-8, 1e-3 * k.max())
+    k[k < thr] = 0.0
+
+    # center kernel for convenience
+    k = fftshift(k)
+
+    # crop to bounding box
     k = crop_kernel(k)
-    k = normalise_kernel(k)
+
+    # normalize
+    s = k.sum()
+    if s > 1e-12:
+        k = k / s
+    else:
+        # fallback to delta
+        k = np.zeros_like(k)
+        k[k.shape[0]//2, k.shape[1]//2] = 1.0
+
     return k
+
+
+def pad_and_ifftshift_kernel(k_small, image_shape):
+    """
+    Place a small kernel at top-left then ifftshift so that its center
+    is at (0,0) in frequency domain (correct for fft2).
+    """
+    H, W = image_shape
+    padded = np.zeros((H, W), dtype=np.float32)
+    kh, kw = k_small.shape
+    padded[:kh, :kw] = k_small
+    # Move center to top-left -> ifftshift will move center to origin for FFT
+    return ifftshift(padded)
+
+def postprocess_kernel_spatial(k_full):
+    """
+    After inverse FFT: shift center to middle, clamp negatives, threshold small,
+    crop to minimal bbox, normalize and return kernel (small).
+    """
+    # move the center of kernel to middle
+    from numpy.fft import fftshift
+    k = fftshift(k_full.real)
+
+    # clamp negatives to zero
+    k = np.clip(k, 0, None)
+
+    # threshold tiny values
+    thr = max(1e-8, 1e-3 * k.max())
+    k[k < thr] = 0.0
+
+
+    # crop to bounding box
+    nz = np.nonzero(k)
+    if len(nz[0]) == 0:
+        return k  # all zeros, fallback
+    y0, y1 = nz[0].min(), nz[0].max()
+    x0, x1 = nz[1].min(), nz[1].max()
+    k_cropped = k[y0:y1+1, x0:x1+1]
+
+    # normalize
+    s = k_cropped.sum()
+    if s > 1e-12:
+        k_cropped /= s
+
+    return k_cropped
+
+def pad_kernel_centered(k_small, image_shape):
+    """
+    Place the small kernel k_small into the center of an array of shape
+    (H, W). No FFT shifts needed when centering like this.
+    """
+    H, W = image_shape
+    kh, kw = k_small.shape
+
+    out = np.zeros((H, W), dtype=np.float32)
+
+    # center placement
+    cy, cx = H // 2, W // 2
+    y0 = cy - kh // 2
+    x0 = cx - kw // 2
+
+    out[y0:y0 + kh, x0:x0 + kw] = k_small
+    return out
+
+def extract_kernel_center(k_full, expected_size=None):
+    """
+    After ifft2, k_full is image-sized. fftshift brings the kernel peak
+    to the center. Then crop either:
+    - the expected target size (kh, kw), OR
+    - auto bbox if expected_size is None.
+    """
+    k = np.real(fftshift(k_full))   # center kernel
+
+    # clip negatives
+    k = np.clip(k, 0, None)
+    # === relative threshold (FIX) ===
+    thr = max(1e-8, 1e-3 * k.max())
+    k[k < thr] = 0.0
+    H, W = k.shape
+
+    if expected_size is not None:
+        kh, kw = expected_size
+        cy, cx = H // 2, W // 2
+        y0 = cy - kh // 2
+        x0 = cx - kw // 2
+        cropped = k[y0:y0 + kh, x0:x0 + kw]
+    else:
+        # auto-crop bounding box of non-zero values
+        nz = np.nonzero(k)
+        if len(nz[0]) == 0:
+            # fallback to 1×1 delta
+            return np.array([[1.0]], dtype=np.float32)
+        y0, y1 = nz[0].min(), nz[0].max()
+        x0, x1 = nz[1].min(), nz[1].max()
+        cropped = k[y0:y1 + 1, x0:x1 + 1]
+
+    # final normalization
+    s = cropped.sum()
+    if s <= 1e-12:
+        # fallback delta
+        out = np.zeros_like(cropped, dtype=np.float32)
+        out[out.shape[0] // 2, out.shape[1] // 2] = 1.0
+        return out
+
+    cropped = cropped / s
+    return cropped

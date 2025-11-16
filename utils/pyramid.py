@@ -19,26 +19,62 @@ def gaussian_pyramid(img, num_levels):
     pyr_coarse_to_fine = pyr[::-1]
     return pyr_coarse_to_fine
 
-def upsample_kernel(k, target_shape):
+def upsample_kernel(k, target_hw):
     """
-    Upsample kernel `k` (2D) to the target image shape (H, W). Returns normalized kernel.
-    Typically used to pad/resize a small kernel to the image FFT size or to the next pyramid level.
-    target_shape: (H, W)
+    Resize kernel to given (H, W). Normalize afterwards.
     """
-    target_h, target_w = target_shape
-    # Avoid zero-sized target
-    if target_h <= 0 or target_w <= 0:
-        raise ValueError("target_shape must be positive")
+    th, tw = target_hw
 
-    # Resize kernel to target size using linear interpolation
-    k_resized = cv2.resize(k, (target_w, target_h), interpolation=cv2.INTER_LINEAR)
+    # cv2.resize uses (width, height)
+    resized = cv2.resize(k, (tw, th), interpolation=cv2.INTER_LINEAR)
 
-    # Enforce non-negativity and normalize
-    k_resized = np.clip(k_resized, 0, None)
-    s = k_resized.sum()
+    resized = np.clip(resized, 0, None)
+    s = resized.sum()
     if s > 1e-12:
-        k_resized = k_resized / s
-    return k_resized
+        resized /= s
+    else:
+        # fallback delta
+        ky, kx = th // 2, tw // 2
+        resized = np.zeros((th, tw), dtype=np.float32)
+        resized[ky, kx] = 1.0
+
+    return resized
+
+def upsample_small_kernel(k_small, scale_factor=2, max_size=None):
+    """
+    Upsample the small kernel by integer scale_factor (default 2).
+    Keeps kernel small (not image-size). Returns normalized kernel.
+    max_size: optional (h_max, w_max) to cap kernel growth.
+    """
+    kh, kw = k_small.shape
+    new_kh = int(kh * scale_factor)
+    new_kw = int(kw * scale_factor)
+
+    if max_size is not None:
+        mh, mw = max_size
+        new_kh = min(new_kh, mh)
+        new_kw = min(new_kw, mw)
+
+    # if either dimension becomes <=0, fallback to same
+    new_kh = max(1, new_kh)
+    new_kw = max(1, new_kw)
+
+    # cv2.resize expects (width, height)
+    import cv2
+    resized = cv2.resize(k_small, (new_kw, new_kh), interpolation=cv2.INTER_LINEAR)
+
+    resized = np.clip(resized, 0, None)
+    s = resized.sum()
+    if s > 1e-12:
+        resized = resized / s
+    else:
+        # fallback to centered delta
+        resized = np.zeros((new_kh, new_kw), dtype=np.float32)
+        resized[new_kh//2, new_kw//2] = 1.0
+
+    return resized
+
+
 
 def upsample_l(l, target_shape):
     target_h, target_w = target_shape
