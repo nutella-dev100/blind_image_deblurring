@@ -27,7 +27,7 @@ EPSILON = 1e-6
 NUM_SCALES = 4
 KERNEL_SIZE = 25   # Must be odd
 KERNEL_MAX_SIZE = 35 # Keep small to prevent drift
-MAX_ITER = 300
+MAX_ITER = 10
 
 # path 
 RESULT_PATH = "results/output.png"
