@@ -112,23 +112,25 @@ def postprocess_kernel_spatial(k_full):
 
     return k_cropped
 
-def pad_kernel_centered(k_small, image_shape):
-    """
-    Place the small kernel k_small into the center of an array of shape
-    (H, W). No FFT shifts needed when centering like this.
-    """
-    H, W = image_shape
-    kh, kw = k_small.shape
+def pad_kernel_centered(k, out_shape):
+    H2, W2 = out_shape
+    kh, kw = k.shape
 
-    out = np.zeros((H, W), dtype=np.float32)
+    # Create empty padded kernel
+    kpad = np.zeros((H2, W2), dtype=np.float32)
 
-    # center placement
-    cy, cx = H // 2, W // 2
-    y0 = cy - kh // 2
-    x0 = cx - kw // 2
+    # Compute center placement
+    cx = (H2 - kh) // 2
+    cy = (W2 - kw) // 2
 
-    out[y0:y0 + kh, x0:x0 + kw] = k_small
-    return out
+    # Place kernel centered
+    kpad[cx:cx+kh, cy:cy+kw] = k
+
+    # Shift so that convolution kernel origin is at (0,0)
+    kpad = np.fft.ifftshift(kpad)
+
+    return kpad
+
 
 def extract_kernel_center(k_full, expected_size=None):
     """
