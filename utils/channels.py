@@ -30,8 +30,10 @@ def bright_channel(image, window_size=15):
 
 
 #norms
-def dcpl0norm(dark):
-    return np.count_nonzero(dark)
+def dcpl0norm(dark, tol=1e-3):
+    """L0 norm: count pixels where dark channel is meaningfully non-zero."""
+    return np.count_nonzero(dark > tol)
 
-def bcpl0norm(bright):
-    return np.count_nonzero(bright)
+def bcpl0norm(bright, tol=1e-3):
+    """L0 norm: count pixels where bright channel is meaningfully non-zero."""
+    return np.count_nonzero(bright > tol)

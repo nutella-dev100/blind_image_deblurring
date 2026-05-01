@@ -147,28 +147,18 @@ class DeblurModel:
                 B_l0 = bcpl0norm(B)
                 w_k = self.config.MU / (B_l0 + self.config.EPSILON)
 
-                # 2. Compute Prior 'p' (Based on Dark Channel)
-                # [CRITICAL FIX]: The prior p must be 3-channel RGB to match 'l' in the solver.
-                # We create 'p' by taking 'l' and forcing dark/noisy regions to zero.
+                # 2. Compute Prior 'p' (Eq. 19 from paper)
+                # p is the thresholded dark channel auxiliary variable:
+                #   p = D(l)  if D(l) >= w_k / ξ
+                #   p = 0     otherwise
                 D = dark_channel(l, window_size=self.config.DCP_WINDOW)
                 
-                # Threshold determines which Dark Channel values are considered "noise/blur"
                 threshold_val = w_k / self.config.XI
                 
-                # Create a copy of l to be our target 'p'
-                p = l.copy()
-                
-                # Logic: If Dark Channel < Threshold, it SHOULD be zero (sparsity).
-                # So we force those pixels in 'p' to black. 
-                # If Dark Channel > Threshold (e.g. sky/edges), we keep 'l' as is.
-                mask_should_be_zero = D < threshold_val
-                
-                # Handle broadcasting mask (H,W) to (H,W,3)
-                if l.ndim == 3:
-                    mask_broadcast = np.repeat(mask_should_be_zero[:, :, np.newaxis], 3, axis=2)
-                    p[mask_broadcast] = 0.0
-                else:
-                    p[mask_should_be_zero] = 0.0
+                # Start from D (2D grayscale map), keep where large
+                p = D.copy()
+                mask_keep = D >= threshold_val
+                p[~mask_keep] = 0.0
 
                 # 3. Compute Gradients 'g' and threshold them
                 # This preserves sharp edges (large gradients) and smooths texture (small gradients)

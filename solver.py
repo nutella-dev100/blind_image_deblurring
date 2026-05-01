@@ -89,7 +89,7 @@ def update_l(l, k, b, g, p, params):
 
     numerator = (np.conj(Fk) * Fb) + lam * Fg + xi * Fp
     denominator = (np.abs(Fk) ** 2) + lam * (np.abs(FDh) ** 2 + np.abs(FDv) ** 2) + xi
-    denominator = np.maximum(denominator, 1e-2)
+    denominator = np.maximum(denominator, 1e-8)
 
     Fl = numerator / denominator
     l_full = np.real(ifft2(Fl, axes=fft_axes))

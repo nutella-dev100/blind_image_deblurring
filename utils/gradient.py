@@ -8,7 +8,7 @@ def gradient_v(I):
 
 
 def compute_gradients(img):
-    #return tuple(grad_v, grad_h)
+    # returns (grad_h, grad_v) — horizontal then vertical
     gh = gradient_h(img)
     gv = gradient_v(img)
     return gh, gv

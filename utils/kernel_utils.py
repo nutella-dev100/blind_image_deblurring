@@ -119,12 +119,12 @@ def pad_kernel_centered(k, out_shape):
     # Create empty padded kernel
     kpad = np.zeros((H2, W2), dtype=np.float32)
 
-    # Compute center placement
-    cx = (H2 - kh) // 2
-    cy = (W2 - kw) // 2
+    # Compute center placement (row offset from H2, col offset from W2)
+    y_off = (H2 - kh) // 2
+    x_off = (W2 - kw) // 2
 
     # Place kernel centered
-    kpad[cx:cx+kh, cy:cy+kw] = k
+    kpad[y_off:y_off+kh, x_off:x_off+kw] = k
 
     # Shift so that convolution kernel origin is at (0,0)
     kpad = np.fft.ifftshift(kpad)
